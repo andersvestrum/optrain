@@ -5,6 +5,11 @@ import type { ActivityStreams } from '@/types'
 
 const StreamsChart = dynamic(() => import('./StreamsChart'), { ssr: false })
 
-export default function StreamsChartClient({ streams }: { streams: ActivityStreams }) {
-  return <StreamsChart streams={streams} />
+interface Props {
+  streams: ActivityStreams
+  activityType?: string
+}
+
+export default function StreamsChartClient({ streams, activityType }: Props) {
+  return <StreamsChart streams={streams} activityType={activityType} />
 }

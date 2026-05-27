@@ -54,6 +54,7 @@ export function normalizeActivity(raw: Record<string, any>): NormalizedActivity 
     type: raw.type,
     sport_type: raw.sport_type || raw.type,
     start_date: raw.start_date,
+    start_date_local: raw.start_date_local,
     distance: raw.distance ?? 0,
     moving_time: raw.moving_time ?? 0,
     elapsed_time: raw.elapsed_time ?? 0,

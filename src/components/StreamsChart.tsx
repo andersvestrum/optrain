@@ -13,7 +13,7 @@ import type { ActivityStreams } from '@/types'
 import { formatTime } from '@/lib/format'
 
 interface ChartPoint {
-  dist: number
+  x: number      // km when distance stream present; seconds when time-only
   hr?: number
   alt?: number
   speed?: number
@@ -21,22 +21,32 @@ interface ChartPoint {
   watts?: number
 }
 
-function buildPoints(streams: ActivityStreams): ChartPoint[] {
-  const { distance, heartrate, altitude, velocity_smooth, cadence, watts } = streams
-  if (!distance) return []
+type XMode = 'distance' | 'time'
 
-  return distance.map((d, i) => ({
-    dist: Math.round((d / 1000) * 100) / 100,
+function buildPoints(streams: ActivityStreams): { points: ChartPoint[]; xMode: XMode } {
+  const { distance, time, heartrate, altitude, velocity_smooth, cadence, watts } = streams
+
+  // Prefer distance as X-axis (outdoor). Fall back to time (indoor/no GPS).
+  const xs = distance ?? time
+  const xMode: XMode = distance ? 'distance' : 'time'
+  if (!xs || xs.length === 0) return { points: [], xMode }
+
+  const points: ChartPoint[] = xs.map((val, i) => ({
+    x: xMode === 'distance'
+      ? Math.round((val / 1000) * 100) / 100   // metres → km, 2 dp
+      : val,                                    // seconds as-is
     hr: heartrate?.[i] ?? undefined,
     alt: altitude?.[i] != null ? Math.round(altitude[i]) : undefined,
-    // cap wild pace spikes (< 2 km/h = almost stopped)
+    // filter near-zero speed (< 2 km/h) to suppress stopped/paused spikes
     speed:
-      velocity_smooth?.[i] && velocity_smooth[i] > 0.55
+      velocity_smooth?.[i] != null && velocity_smooth[i] > 0.55
         ? Math.round(velocity_smooth[i] * 3.6 * 10) / 10
         : undefined,
     cadence: cadence?.[i] ?? undefined,
     watts: watts?.[i] ?? undefined,
   }))
+
+  return { points, xMode }
 }
 
 function paceLabel(speedKmh: number): string {
@@ -54,6 +64,7 @@ const TOOLTIP_STYLE = {
 
 interface SubChartProps {
   data: ChartPoint[]
+  xMode: XMode
   dataKey: keyof ChartPoint
   color: string
   label: string
@@ -65,6 +76,7 @@ interface SubChartProps {
 
 function SubChart({
   data,
+  xMode,
   dataKey,
   color,
   label,
@@ -75,6 +87,14 @@ function SubChart({
 }: SubChartProps) {
   const hasData = data.some((p) => p[dataKey] != null)
   if (!hasData) return null
+
+  const xTickFormatter = xMode === 'distance'
+    ? (v: number) => `${v} km`
+    : (v: number) => formatTime(v)
+
+  const xTooltipFormatter = xMode === 'distance'
+    ? (v: number) => `${v} km`
+    : (v: number) => formatTime(v)
 
   return (
     <div>
@@ -89,11 +109,11 @@ function SubChart({
           </defs>
           <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
           <XAxis
-            dataKey="dist"
+            dataKey="x"
             tick={{ fontSize: 10, fill: '#9ca3af' }}
             axisLine={false}
             tickLine={false}
-            tickFormatter={(v) => `${v} km`}
+            tickFormatter={xTickFormatter}
             interval="preserveStartEnd"
           />
           <YAxis
@@ -108,7 +128,7 @@ function SubChart({
             formatter={(v: number) =>
               tooltipFormatter ? [tooltipFormatter(v), label] : [`${v} ${unit}`, label]
             }
-            labelFormatter={(v) => `${v} km`}
+            labelFormatter={(v) => xTooltipFormatter(v as number)}
             contentStyle={TOOLTIP_STYLE}
           />
           <Area
@@ -126,9 +146,19 @@ function SubChart({
   )
 }
 
-export default function StreamsChart({ streams }: { streams: ActivityStreams }) {
-  const data = buildPoints(streams)
+// Rowing cadence is strokes/min (spm); everything else is rpm
+const ROWING_TYPES = new Set(['Rowing', 'Canoeing', 'Kayaking', 'StandUpPaddling'])
+
+interface StreamsChartProps {
+  streams: ActivityStreams
+  activityType?: string
+}
+
+export default function StreamsChart({ streams, activityType }: StreamsChartProps) {
+  const { points: data, xMode } = buildPoints(streams)
   if (data.length === 0) return null
+
+  const cadenceUnit = ROWING_TYPES.has(activityType ?? '') ? 'spm' : 'rpm'
 
   return (
     <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 space-y-6">
@@ -136,6 +166,7 @@ export default function StreamsChart({ streams }: { streams: ActivityStreams }) 
 
       <SubChart
         data={data}
+        xMode={xMode}
         dataKey="hr"
         color="#f97316"
         label="Heart Rate"
@@ -144,6 +175,7 @@ export default function StreamsChart({ streams }: { streams: ActivityStreams }) 
       />
       <SubChart
         data={data}
+        xMode={xMode}
         dataKey="speed"
         color="#3b82f6"
         label="Speed"
@@ -153,6 +185,7 @@ export default function StreamsChart({ streams }: { streams: ActivityStreams }) 
       />
       <SubChart
         data={data}
+        xMode={xMode}
         dataKey="alt"
         color="#10b981"
         label="Altitude"
@@ -162,14 +195,16 @@ export default function StreamsChart({ streams }: { streams: ActivityStreams }) 
       />
       <SubChart
         data={data}
+        xMode={xMode}
         dataKey="cadence"
         color="#8b5cf6"
-        label="Cadence"
-        unit="rpm"
+        label={`Cadence (${cadenceUnit})`}
+        unit={cadenceUnit}
         domain={['auto', 'auto']}
       />
       <SubChart
         data={data}
+        xMode={xMode}
         dataKey="watts"
         color="#f59e0b"
         label="Power"

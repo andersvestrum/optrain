@@ -16,6 +16,8 @@ import {
   formatSpeed,
   formatElevation,
   formatDate,
+  formatSportType,
+  effectiveSportType,
 } from '@/lib/format'
 import type { PublicProfile } from '@/types'
 
@@ -54,7 +56,16 @@ export default async function ActivityDetailPage({
       }
     : null
 
-  const isRun = ['Run', 'TrailRun', 'VirtualRun'].includes(activity.type)
+  const sportType = effectiveSportType(activity.sport_type, activity.distance)
+  const isRun = ['Run', 'TrailRun', 'VirtualRun'].includes(sportType)
+
+  const INDOOR_SPORT_TYPES = new Set([
+    'VirtualRun', 'VirtualRide', 'VirtualRow',
+    'WeightTraining', 'Crossfit', 'Workout', 'Elliptical', 'StairStepper',
+    'HighIntensityIntervalTraining', 'Yoga', 'Pilates', 'Gymnastics', 'JumpRope',
+    'Boxing', 'MartialArts', 'Wrestling',
+  ])
+  const isIndoor = INDOOR_SPORT_TYPES.has(sportType)
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -71,13 +82,20 @@ export default async function ActivityDetailPage({
         {/* Header */}
         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
           <div className="flex items-start gap-4">
-            <span className="text-gray-400 mt-1">
-              <SportIcon type={activity.type} size={28} />
+            <span className={`mt-1 ${isIndoor ? 'text-sky-400' : 'text-gray-400'}`}>
+              <SportIcon type={sportType} size={28} />
             </span>
             <div className="flex-1">
               <h1 className="text-2xl font-bold text-gray-900 leading-tight">{activity.name}</h1>
-              <p className="text-gray-500 mt-1 text-sm">
-                {activity.sport_type} · {formatDate(activity.start_date)}
+              <p className="text-gray-500 mt-1 text-sm flex items-center gap-1.5 flex-wrap">
+                <span>{formatSportType(sportType)}</span>
+                {isIndoor && (
+                  <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-sky-50 text-sky-500 border border-sky-100 text-xs font-medium leading-none">
+                    Indoor
+                  </span>
+                )}
+                <span>·</span>
+                <span>{formatDate(activity.start_date_local ?? activity.start_date)}</span>
               </p>
               {activity.description && (
                 <p className="text-gray-600 text-sm mt-2 whitespace-pre-line">
@@ -140,7 +158,7 @@ export default async function ActivityDetailPage({
         <ActivityPhotos activityId={activity.id} />
 
         {/* Streams charts */}
-        {activity.streams && <StreamsChartClient streams={activity.streams} />}
+        {activity.streams && <StreamsChartClient streams={activity.streams} activityType={activity.type} />}
 
         {/* Splits */}
         {activity.splits_metric && activity.splits_metric.length > 0 && (
