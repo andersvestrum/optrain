@@ -5,7 +5,7 @@ import { readActivities, readProfile, updateActivity } from '@/lib/storage'
 import { getValidAccessToken, enrichActivity } from '@/lib/strava'
 import Navbar from '@/components/Navbar'
 import BestEfforts from '@/components/BestEfforts'
-import ActivityIcon from '@/components/ActivityIcon'
+import SportIcon from '@/components/ActivityIcon'
 import StreamsChartClient from '@/components/StreamsChartClient'
 import RouteMapClient from '@/components/RouteMapClient'
 import ActivityPhotos from '@/components/ActivityPhotos'
@@ -72,7 +72,7 @@ export default async function ActivityDetailPage({
         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
           <div className="flex items-start gap-4">
             <span className="text-gray-400 mt-1">
-              <ActivityIcon type={activity.type} size={28} strokeWidth={1.5} />
+              <SportIcon type={activity.type} size={28} />
             </span>
             <div className="flex-1">
               <h1 className="text-2xl font-bold text-gray-900 leading-tight">{activity.name}</h1>

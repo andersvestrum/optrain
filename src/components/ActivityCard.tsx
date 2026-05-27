@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import type { NormalizedActivity } from '@/types'
 import { formatDistance, formatTime, formatPace, formatShortDate } from '@/lib/format'
-import ActivityIcon from './ActivityIcon'
+import SportIcon from './ActivityIcon'
 
 export default function ActivityCard({ activity }: { activity: NormalizedActivity }) {
   const isRun = ['Run', 'TrailRun', 'VirtualRun'].includes(activity.type)
@@ -12,7 +12,7 @@ export default function ActivityCard({ activity }: { activity: NormalizedActivit
       className="flex items-center gap-4 bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md hover:border-orange-200 transition-all p-4 group"
     >
       <span className="flex-shrink-0 text-gray-400 group-hover:text-orange-500 transition-colors">
-        <ActivityIcon type={activity.type} size={20} strokeWidth={1.5} />
+        <SportIcon type={activity.type} size={20} />
       </span>
 
       <div className="flex-1 min-w-0">
