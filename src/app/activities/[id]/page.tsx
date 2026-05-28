@@ -10,6 +10,7 @@ import StreamsChartClient from '@/components/StreamsChartClient'
 import RouteMapClient from '@/components/RouteMapClient'
 import ActivityPhotos from '@/components/ActivityPhotos'
 import AnalyseCardLoader from '@/components/AnalyseCardLoader'
+import EditActivityForm from '@/components/EditActivityForm'
 import {
   formatDistance,
   formatTime,
@@ -103,6 +104,14 @@ export default async function ActivityDetailPage({
                   {activity.description}
                 </p>
               )}
+              <EditActivityForm
+                activityId={activity.id}
+                initialName={activity.name}
+                initialDescription={activity.description ?? ''}
+                initialDistance={activity.distance}
+                movingTime={activity.moving_time}
+                isRun={isRun}
+              />
             </div>
             {!activity.enriched && (
               <span className="text-xs text-gray-400 bg-gray-100 rounded-full px-3 py-1">
