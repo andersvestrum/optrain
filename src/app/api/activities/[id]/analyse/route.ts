@@ -40,11 +40,15 @@ const TYPE_CONTEXT: Record<string, string> = {
   VirtualRow: `Indoor rowing erg session. Same display layout as Concept2 — distance in metres, time, split /500m, stroke rate, power.`,
   Ride: `Indoor cycling session (trainer, spin bike, Zwift, Wahoo, etc.). Displays show: distance in km (convert to metres), power (W), cadence (rpm), speed (km/h), heart rate (bpm).
 
-Keiser M-series bikes (very common in gyms): the field labelled TRIP is the distance in km — convert to metres. IMPORTANT: the Keiser display timer resets to 0:00 after every 60 minutes. A session that shows 25:00 on the display could be 25, 85, or 145 minutes. Do NOT extract moving_time from a Keiser display — it is unreliable. Use only TRIP (distance) and any power/HR/cadence values shown.`,
+Keiser M-series bikes (very common in gyms): the field labelled TRIP is the distance in km — convert to metres. IMPORTANT: the Keiser display timer resets to 0:00 after every 60 minutes — do NOT extract moving_time from a Keiser display.
+
+SANITY CHECK (required): After reading the distance, compute implied average speed = distance_km / (moving_time_seconds / 3600). For indoor cycling this must be between 15 and 65 km/h. If the result is outside that range you have misread the decimal position on the display — re-examine the digits carefully before finalising distance_m.`,
 
   VirtualRide: `Indoor cycling session. Same as above — distance in km (convert to metres), power (W), cadence (rpm), speed (km/h).
 
-Keiser M-series bikes: TRIP = distance in km (convert to metres). The display timer resets every 60 minutes — do not use the displayed time for moving_time.`,
+Keiser M-series bikes: TRIP = distance in km (convert to metres). Display timer resets every 60 minutes — do not use the displayed time for moving_time.
+
+SANITY CHECK (required): implied speed = distance_km / (moving_time_seconds / 3600) must be 15–65 km/h. If outside that range, re-read the display — you likely misread the decimal position.`,
   Run: `Treadmill run. Displays show: distance in km or miles (1 mile = 1609.34 m), pace (min/km or min/mile → convert to sec/km), speed (km/h or mph), incline (%), heart rate (bpm).`,
   VirtualRun: `Treadmill run. Same as above — distance in km or miles, pace, speed, heart rate.`,
   Swim: `Pool swim. Look for: pool length (25 m or 50 m), lap count (distance = laps × pool length), or total distance in metres/yards (1 yd = 0.9144 m).`,
@@ -199,6 +203,43 @@ function buildSuggestions(
   return suggestions
 }
 
+// ─── Server-side sanity checks ────────────────────────────────────────────────
+
+/**
+ * Validates extracted distance against the known moving_time.
+ * Catches decimal misreads (e.g. 5.83 km instead of 58.3 km) by checking
+ * whether the implied average speed is physically plausible for the sport.
+ * Discards distance_m if it falls outside the valid range.
+ */
+function sanitiseExtraction(raw: RawExtraction, activity: NormalizedActivity): void {
+  if (!raw.distance_m || raw.distance_m <= 0) return
+  const movingTime = activity.moving_time
+  if (movingTime <= 0) return // can't validate without time
+
+  const impliedSpeedKmh = (raw.distance_m / 1000) / (movingTime / 3600)
+  const sport = activity.sport_type
+
+  const ranges: Record<string, [number, number]> = {
+    Ride:         [8,  65],
+    VirtualRide:  [8,  65],
+    Run:          [4,  30],
+    VirtualRun:   [4,  30],
+    Rowing:       [3,  30],  // rowing equivalent km/h
+    VirtualRow:   [3,  30],
+    Swim:         [0.5, 8],
+    OpenWaterSwim:[0.5, 8],
+  }
+
+  const range = ranges[sport]
+  if (!range) return
+
+  const [min, max] = range
+  if (impliedSpeedKmh < min || impliedSpeedKmh > max) {
+    // Physically impossible — almost certainly a decimal misread
+    raw.distance_m = undefined
+  }
+}
+
 // ─── JSON extraction helpers ──────────────────────────────────────────────────
 
 /**
@@ -271,7 +312,7 @@ export async function POST(
         { role: 'system', content: SYSTEM_PROMPT },
         { role: 'user', content: content as never },
       ],
-      max_tokens: 512,
+      max_tokens: 1024,
     })
 
     const text = result.choices[0]?.message?.content ?? ''
@@ -287,7 +328,7 @@ export async function POST(
           { role: 'system', content: SYSTEM_PROMPT },
           { role: 'user', content: prompt },
         ],
-        max_tokens: 512,
+        max_tokens: 1024,
       })
       const text = fallback.choices[0]?.message?.content ?? ''
       const jsonMatch = stripThinkTags(text).match(/\{[\s\S]*\}/)
@@ -297,6 +338,7 @@ export async function POST(
     }
   }
 
+  sanitiseExtraction(raw, activity)
   const suggestions = buildSuggestions(raw, activity, missing, hasPhotos)
 
   return NextResponse.json({
