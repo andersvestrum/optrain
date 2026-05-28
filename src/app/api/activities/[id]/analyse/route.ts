@@ -1,91 +1,115 @@
-import { redirect } from 'next/navigation'
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/session'
 import { readActivities } from '@/lib/storage'
 import { HfInference } from '@huggingface/inference'
+import { formatTime, formatDistance } from '@/lib/format'
 import type { NormalizedActivity } from '@/types'
 
-// ─── Activity-type-specific prompts ──────────────────────────────────────────
+// ─── Which fields are genuinely missing from the activity ─────────────────────
+
+interface MissingFields {
+  distance: boolean
+  moving_time: boolean
+  elapsed_time: boolean
+  average_heartrate: boolean
+  max_heartrate: boolean
+  average_cadence: boolean
+  average_watts: boolean
+}
+
+function getMissingFields(activity: NormalizedActivity): MissingFields {
+  return {
+    distance:          (activity.distance ?? 0) < 100,
+    moving_time:       (activity.moving_time ?? 0) === 0,
+    elapsed_time:      (activity.elapsed_time ?? 0) === 0,
+    average_heartrate: activity.average_heartrate == null,
+    max_heartrate:     activity.max_heartrate == null,
+    average_cadence:   activity.average_cadence == null,
+    average_watts:     activity.average_watts == null,
+  }
+}
+
+function hasMissingFields(missing: MissingFields): boolean {
+  return Object.values(missing).some(Boolean)
+}
+
+// ─── Activity-type-specific context ──────────────────────────────────────────
+
+const TYPE_CONTEXT: Record<string, string> = {
+  Rowing: `Indoor rowing session (erg/ergometer, e.g. Concept2). Displays show: distance in metres, time as h:mm:ss, split as mm:ss /500m, stroke rate (spm), power (W).`,
+  VirtualRow: `Indoor rowing erg session. Same display layout as Concept2 — distance in metres, time, split /500m, stroke rate, power.`,
+  Ride: `Indoor cycling session (trainer, spin bike, Zwift, Wahoo, etc.). Displays show: distance in km (convert to metres), power (W), cadence (rpm), speed (km/h), heart rate (bpm).`,
+  VirtualRide: `Indoor cycling session. Same as above — distance in km, power (W), cadence (rpm), speed (km/h).`,
+  Run: `Treadmill run. Displays show: distance in km or miles (1 mile = 1609.34 m), pace (min/km or min/mile → convert to sec/km), speed (km/h or mph), incline (%), heart rate (bpm).`,
+  VirtualRun: `Treadmill run. Same as above — distance in km or miles, pace, speed, heart rate.`,
+  Swim: `Pool swim. Look for: pool length (25 m or 50 m), lap count (distance = laps × pool length), or total distance in metres/yards (1 yd = 0.9144 m).`,
+  WeightTraining: `Gym/weight training session. Look for workout duration (minutes or seconds) and any distance equivalent. Parse the title and description for clues (e.g. "45 min", "5 rounds").`,
+}
+
+// ─── Dynamic prompt builder ───────────────────────────────────────────────────
 
 const SYSTEM_PROMPT = `You are a fitness data extraction assistant. Extract structured workout data from activity titles, descriptions, and photos of equipment displays. Return ONLY valid JSON matching the schema.
 
-Make your best effort — if you can make a reasonable estimate from partial information, include it. It is better to suggest a plausible value than to return nothing. For any value you are less than fully certain about, note it in the "notes" field (e.g. "distance estimated from title"). Only omit a field if you have absolutely no basis for any estimate.`
+Make your best effort — if you can make a reasonable estimate from partial information, include it. A value inferred from the title (e.g. "5k row" → 5000 m) is valid. Explain any uncertainty in the "notes" field. Only omit a field if you have absolutely no basis for any estimate.`
 
-function buildPrompt(activity: NormalizedActivity, hasPhotos: boolean): string {
-  const typeInstructions: Record<string, string> = {
-    Rowing: `This is an indoor rowing session (erg/ergometer, e.g. Concept2). Displays typically show:
-- Distance in metres (e.g. "5000m", "5,000m")
-- Time as h:mm:ss.t or mm:ss.t
-- Split pace as mm:ss.t /500m
-- Stroke rate in strokes/min (s/m or spm)
-- Power in watts (W)
-- Calories
-Convert any split pace to seconds per 500m. If the title says something like "5k row" or "5000m", use that as distance. Best-effort estimates from partial data are encouraged.`,
+function buildPrompt(
+  activity: NormalizedActivity,
+  missing: MissingFields,
+  hasPhotos: boolean,
+): string {
+  const context =
+    TYPE_CONTEXT[activity.sport_type] ??
+    TYPE_CONTEXT[activity.type] ??
+    `${activity.sport_type} session. Extract any visible performance metrics.`
 
-    VirtualRow: `This is an indoor rowing erg session. Same as above. Extract any numbers visible — partial data is fine.`,
+  // ── What Strava already has — shown as ground truth ──────────────────────
+  const knownLines: string[] = []
+  if (!missing.moving_time)
+    knownLines.push(`Moving time: ${formatTime(activity.moving_time)} (recorded by device — authoritative, do not suggest changes)`)
+  if (!missing.elapsed_time)
+    knownLines.push(`Elapsed time: ${formatTime(activity.elapsed_time)} (recorded by device — authoritative, do not suggest changes)`)
+  if (!missing.distance)
+    knownLines.push(`Distance: ${formatDistance(activity.distance)} (already recorded — do not suggest changes)`)
+  if (!missing.average_heartrate)
+    knownLines.push(`Avg heart rate: ${Math.round(activity.average_heartrate!)} bpm (already recorded)`)
+  if (!missing.max_heartrate)
+    knownLines.push(`Max heart rate: ${Math.round(activity.max_heartrate!)} bpm (already recorded)`)
+  if (!missing.average_cadence)
+    knownLines.push(`Avg cadence: ${Math.round(activity.average_cadence!)} (already recorded)`)
+  if (!missing.average_watts)
+    knownLines.push(`Avg power: ${Math.round(activity.average_watts!)} W (already recorded)`)
 
-    Ride: `This is an indoor cycling session (trainer, spin bike, Zwift, Wahoo, etc.). Displays typically show:
-- Distance in km (sometimes miles — convert to metres)
-- Average power in watts (W)
-- Cadence in rpm
-- Average speed in km/h
-- Heart rate in bpm
-- Calories
-If the title mentions distance or duration (e.g. "45 min ride", "20km Zwift"), use that. Estimates from partial info are welcome.`,
+  // ── Schema: only fields that are genuinely missing ────────────────────────
+  const schemaFields: string[] = []
+  if (missing.distance)
+    schemaFields.push(`  "distance_m": number,           // total distance in metres`)
+  if (missing.moving_time)
+    schemaFields.push(`  "moving_time_s": number,        // active/moving time in seconds`)
+  if (missing.elapsed_time)
+    schemaFields.push(`  "elapsed_time_s": number,       // total elapsed time in seconds`)
+  if (missing.average_heartrate)
+    schemaFields.push(`  "average_heartrate": number,    // average heart rate in bpm`)
+  if (missing.max_heartrate)
+    schemaFields.push(`  "max_heartrate": number,        // max heart rate in bpm`)
+  if (missing.average_cadence)
+    schemaFields.push(`  "average_cadence": number,      // cadence in rpm or spm`)
+  if (missing.average_watts)
+    schemaFields.push(`  "average_watts": number,        // average power in watts`)
+  schemaFields.push(`  "notes": string                 // what you found, where, and any uncertainty`)
 
-    VirtualRide: `This is an indoor cycling session. Same as above. Best-effort estimates from any available signal are encouraged.`,
-
-    Run: `This is a treadmill run. Displays typically show:
-- Distance in km or miles (convert miles: 1 mile = 1609.34 m)
-- Pace in min:sec per km or per mile (convert to seconds/km)
-- Speed in km/h or mph
-- Incline in %
-- Heart rate in bpm
-- Calories
-If the title says "5k treadmill" or similar, extract the distance. Estimates from partial info are welcome.`,
-
-    VirtualRun: `This is a treadmill run. Same as above. Best-effort estimates from any available signal are encouraged.`,
-
-    Swim: `This is a pool swim session. Look for:
-- Pool length in metres (25m or 50m)
-- Number of laps (total length = laps × pool length)
-- Total distance in metres or yards (1 yard = 0.9144m)
-- Total time
-- Stroke type
-If only pool length and lap count are visible, compute total distance. Estimates are welcome.`,
-
-    WeightTraining: `This is a gym/weight training session. Look for:
-- Total active/workout time in minutes or seconds
-- Calories burned
-- Any distance equivalent
-Parse the title and description for clues (e.g. "5x5 squats 45 min", "3 rounds", "30 min session"). Even rough estimates from the title or description count.`,
-  }
-
-  const instruction = typeInstructions[activity.sport_type]
-    ?? typeInstructions[activity.type]
-    ?? `This is a ${activity.sport_type} session. Extract any performance metrics visible.`
-
-  return `${instruction}
+  return `${context}
 
 Activity title: "${activity.name}"
 ${activity.description ? `Description: "${activity.description}"` : ''}
-${hasPhotos ? 'Photos of the session/equipment display are attached.' : 'No photos available.'}
+${hasPhotos ? 'Photos of the session/equipment display are attached.' : 'No photos available — rely on title and description.'}
 
-Return a JSON object with all fields you can extract or reasonably estimate. All times in seconds, all distances in metres.
+${knownLines.length > 0
+    ? `Already recorded by Strava (ground truth — focus only on the missing fields below):\n${knownLines.map((l) => `  • ${l}`).join('\n')}\n`
+    : ''}
+The following fields are missing and need to be extracted. All times in seconds, distances in metres. Best-effort estimates are welcome.
 
-For each field, give your best estimate even if you are not 100% certain — partial data (e.g. a blurry number, a title like "5k row", a description mentioning "30 min") is enough to include an estimate. Explain your reasoning and any uncertainty in the "notes" field.
-
-Schema (include every field you can estimate, even if approximate):
 {
-  "distance_m": number,           // total distance in metres
-  "moving_time_s": number,        // active/moving time in seconds
-  "elapsed_time_s": number,       // total elapsed time in seconds
-  "average_heartrate": number,    // average heart rate in bpm
-  "max_heartrate": number,        // max heart rate in bpm
-  "average_cadence": number,      // cadence in rpm or spm
-  "average_watts": number,        // average power in watts
-  "calories": number,             // calories burned
-  "notes": string                 // explain what you found, where you found it, and any uncertainty
+${schemaFields.join('\n')}
 }`
 }
 
@@ -99,7 +123,6 @@ interface RawExtraction {
   max_heartrate?: number
   average_cadence?: number
   average_watts?: number
-  calories?: number
   notes?: string
 }
 
@@ -117,14 +140,8 @@ function formatFieldValue(field: string, value: number): string {
     case 'distance':
       return value < 1000 ? `${value} m` : `${(value / 1000).toFixed(2)} km`
     case 'moving_time':
-    case 'elapsed_time': {
-      const h = Math.floor(value / 3600)
-      const m = Math.floor((value % 3600) / 60)
-      const s = value % 60
-      return h > 0
-        ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-        : `${m}:${String(s).padStart(2, '0')}`
-    }
+    case 'elapsed_time':
+      return formatTime(value)
     case 'average_heartrate':
     case 'max_heartrate':
       return `${Math.round(value)} bpm`
@@ -132,8 +149,6 @@ function formatFieldValue(field: string, value: number): string {
       return `${Math.round(value)} rpm`
     case 'average_watts':
       return `${Math.round(value)} W`
-    case 'calories':
-      return `${Math.round(value)} kcal`
     default:
       return String(value)
   }
@@ -142,6 +157,7 @@ function formatFieldValue(field: string, value: number): string {
 function buildSuggestions(
   raw: RawExtraction,
   activity: NormalizedActivity,
+  missing: MissingFields,
   hasPhotos: boolean,
 ): Suggestion[] {
   const source: Suggestion['source'] = hasPhotos ? 'photo' : 'text'
@@ -152,9 +168,9 @@ function buildSuggestions(
     label: string,
     rawValue: number | undefined,
     currentValue: number | null | undefined,
-    addIf: boolean,
+    isMissing: boolean,
   ) => {
-    if (rawValue == null || !addIf) return
+    if (!isMissing || rawValue == null || rawValue <= 0) return
     suggestions.push({
       field,
       label,
@@ -167,13 +183,13 @@ function buildSuggestions(
     })
   }
 
-  tryAdd('distance',          'Distance',       raw.distance_m,      activity.distance,          (activity.distance ?? 0) < 100 && (raw.distance_m ?? 0) > 0)
-  tryAdd('moving_time',       'Moving time',    raw.moving_time_s,   activity.moving_time,        (activity.moving_time ?? 0) === 0 && (raw.moving_time_s ?? 0) > 0)
-  tryAdd('elapsed_time',      'Elapsed time',   raw.elapsed_time_s,  activity.elapsed_time,       (activity.elapsed_time ?? 0) === 0 && (raw.elapsed_time_s ?? 0) > 0)
-  tryAdd('average_heartrate', 'Avg heart rate', raw.average_heartrate, activity.average_heartrate, activity.average_heartrate == null && (raw.average_heartrate ?? 0) > 0)
-  tryAdd('max_heartrate',     'Max heart rate', raw.max_heartrate,   activity.max_heartrate,      activity.max_heartrate == null && (raw.max_heartrate ?? 0) > 0)
-  tryAdd('average_cadence',   'Avg cadence',    raw.average_cadence, activity.average_cadence,    activity.average_cadence == null && (raw.average_cadence ?? 0) > 0)
-  tryAdd('average_watts',     'Avg power',      raw.average_watts,   activity.average_watts,      activity.average_watts == null && (raw.average_watts ?? 0) > 0)
+  tryAdd('distance',          'Distance',       raw.distance_m,        activity.distance,          missing.distance)
+  tryAdd('moving_time',       'Moving time',    raw.moving_time_s,     activity.moving_time,        missing.moving_time)
+  tryAdd('elapsed_time',      'Elapsed time',   raw.elapsed_time_s,    activity.elapsed_time,       missing.elapsed_time)
+  tryAdd('average_heartrate', 'Avg heart rate', raw.average_heartrate, activity.average_heartrate,  missing.average_heartrate)
+  tryAdd('max_heartrate',     'Max heart rate', raw.max_heartrate,     activity.max_heartrate,      missing.max_heartrate)
+  tryAdd('average_cadence',   'Avg cadence',    raw.average_cadence,   activity.average_cadence,    missing.average_cadence)
+  tryAdd('average_watts',     'Avg power',      raw.average_watts,     activity.average_watts,      missing.average_watts)
 
   return suggestions
 }
@@ -196,13 +212,25 @@ export async function POST(
   const photoUrls: string[] = body.photoUrls ?? []
   const hasPhotos = photoUrls.length > 0
 
+  // Determine what is genuinely missing before calling the model
+  const missing = getMissingFields(activity)
+
+  // Early exit — nothing to extract
+  if (!hasMissingFields(missing)) {
+    return NextResponse.json({
+      suggestions: [],
+      notes: 'All fields are already recorded by Strava.',
+      model: '',
+    })
+  }
+
   const hfToken = process.env.HF_TOKEN
   if (!hfToken) {
     return NextResponse.json({ error: 'HF_TOKEN not configured' }, { status: 503 })
   }
 
   const hf = new HfInference(hfToken)
-  const prompt = buildPrompt(activity, hasPhotos)
+  const prompt = buildPrompt(activity, missing, hasPhotos)
 
   // Build the message content — text prompt + up to 3 photos
   type ContentPart =
@@ -251,7 +279,7 @@ export async function POST(
     }
   }
 
-  const suggestions = buildSuggestions(raw, activity, hasPhotos)
+  const suggestions = buildSuggestions(raw, activity, missing, hasPhotos)
 
   return NextResponse.json({
     suggestions,
