@@ -28,6 +28,7 @@ export async function PUT(
   const { token } = await getValidAccessToken()
 
   const stravaBody: Record<string, unknown> = {}
+  if (updates.name != null)          stravaBody.name         = updates.name
   if (updates.distance != null)      stravaBody.distance     = updates.distance
   if (updates.moving_time != null)   stravaBody.moving_time  = updates.moving_time
   if (updates.elapsed_time != null)  stravaBody.elapsed_time = updates.elapsed_time
