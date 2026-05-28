@@ -9,6 +9,7 @@ import SportIcon from '@/components/ActivityIcon'
 import StreamsChartClient from '@/components/StreamsChartClient'
 import RouteMapClient from '@/components/RouteMapClient'
 import ActivityPhotos from '@/components/ActivityPhotos'
+import AnalyseCardLoader from '@/components/AnalyseCardLoader'
 import {
   formatDistance,
   formatTime,
@@ -110,6 +111,14 @@ export default async function ActivityDetailPage({
             )}
           </div>
         </div>
+
+        {/* AI analysis — auto-loads for zero-distance activities */}
+        {activity.distance < 100 && (
+          <AnalyseCardLoader
+            activityId={activity.id}
+            sportType={activity.sport_type}
+          />
+        )}
 
         {/* Route map */}
         {(activity.streams?.latlng || activity.map_polyline) && (
