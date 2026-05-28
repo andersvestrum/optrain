@@ -40,15 +40,11 @@ const TYPE_CONTEXT: Record<string, string> = {
   VirtualRow: `Indoor rowing erg session. Same display layout as Concept2 — distance in metres, time, split /500m, stroke rate, power.`,
   Ride: `Indoor cycling session (trainer, spin bike, Zwift, Wahoo, etc.). Displays show: distance in km (convert to metres), power (W), cadence (rpm), speed (km/h), heart rate (bpm).
 
-Keiser M-series bikes (very common in gyms): the field labelled TRIP is the distance in km — convert to metres. IMPORTANT: the Keiser display timer resets to 0:00 after every 60 minutes — do NOT extract moving_time from a Keiser display.
-
-SANITY CHECK (required): After reading the distance, compute implied average speed = distance_km / (moving_time_seconds / 3600). For indoor cycling this must be between 15 and 65 km/h. If the result is outside that range you have misread the decimal position on the display — re-examine the digits carefully before finalising distance_m.`,
+Keiser M-series bikes (very common in gyms): the field labelled TRIP is the distance in km — convert to metres. CRITICAL: the Keiser display timer resets to 0:00 after every 60 minutes. The displayed time is UNRELIABLE — do not use it for any calculation or plausibility reasoning. For any speed or duration reasoning, use ONLY the moving_time from the "Already recorded by Strava" section above.`,
 
   VirtualRide: `Indoor cycling session. Same as above — distance in km (convert to metres), power (W), cadence (rpm), speed (km/h).
 
-Keiser M-series bikes: TRIP = distance in km (convert to metres). Display timer resets every 60 minutes — do not use the displayed time for moving_time.
-
-SANITY CHECK (required): implied speed = distance_km / (moving_time_seconds / 3600) must be 15–65 km/h. If outside that range, re-read the display — you likely misread the decimal position.`,
+Keiser M-series bikes: TRIP = distance in km (convert to metres). The display timer resets every 60 minutes and is UNRELIABLE — never use it for any calculation. Use ONLY the moving_time from the "Already recorded by Strava" section for any reasoning about session duration or speed.`,
   Run: `Treadmill run. Displays show: distance in km or miles (1 mile = 1609.34 m), pace (min/km or min/mile → convert to sec/km), speed (km/h or mph), incline (%), heart rate (bpm).`,
   VirtualRun: `Treadmill run. Same as above — distance in km or miles, pace, speed, heart rate.`,
   Swim: `Pool swim. Look for: pool length (25 m or 50 m), lap count (distance = laps × pool length), or total distance in metres/yards (1 yd = 0.9144 m).`,
