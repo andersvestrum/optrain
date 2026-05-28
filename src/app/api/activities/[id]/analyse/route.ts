@@ -161,6 +161,8 @@ function formatFieldValue(field: string, value: number): string {
       return `${Math.round(value)} rpm`
     case 'average_watts':
       return `${Math.round(value)} W`
+    case 'average_speed':
+      return `${(value * 3.6).toFixed(1)} km/h`
     default:
       return String(value)
   }
@@ -202,6 +204,21 @@ function buildSuggestions(
   tryAdd('max_heartrate',     'Max heart rate', raw.max_heartrate,     activity.max_heartrate,      missing.max_heartrate)
   tryAdd('average_cadence',   'Avg cadence',    raw.average_cadence,   activity.average_cadence,    missing.average_cadence)
   tryAdd('average_watts',     'Avg power',      raw.average_watts,     activity.average_watts,      missing.average_watts)
+
+  // Derive average_speed when distance was extracted and moving_time is known
+  const distanceForSpeed = raw.distance_m
+  const movingTimeForSpeed = missing.moving_time ? raw.moving_time_s : activity.moving_time
+  if (missing.distance && distanceForSpeed && distanceForSpeed > 0 && movingTimeForSpeed && movingTimeForSpeed > 0) {
+    const derivedSpeed = distanceForSpeed / movingTimeForSpeed  // m/s
+    suggestions.push({
+      field: 'average_speed',
+      label: 'Avg speed',
+      currentValue: activity.average_speed > 0 ? formatFieldValue('average_speed', activity.average_speed) : '—',
+      suggestedValue: formatFieldValue('average_speed', derivedSpeed),
+      rawValue: derivedSpeed,
+      source: 'derived',
+    })
+  }
 
   return suggestions
 }

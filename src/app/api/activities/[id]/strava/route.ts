@@ -22,6 +22,15 @@ export async function PUT(
 
   // Save locally first — Strava push is best-effort
   const { id: _id, streams, laps, best_efforts, splits_metric, ...safe } = updates
+
+  // Derive average_speed when distance is updated but speed is not explicitly provided
+  if (safe.distance != null && safe.average_speed == null) {
+    const movingTime = safe.moving_time ?? activity.moving_time
+    if (movingTime > 0 && safe.distance > 0) {
+      safe.average_speed = safe.distance / movingTime
+    }
+  }
+
   updateActivity(session.userId, Number(id), safe)
 
   // Push the Strava-updatable subset
