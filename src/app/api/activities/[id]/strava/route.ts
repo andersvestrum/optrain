@@ -23,11 +23,19 @@ export async function PUT(
   // Save locally first — Strava push is best-effort
   const { id: _id, streams, laps, best_efforts, splits_metric, ...safe } = updates
 
-  // Derive average_speed when distance is updated but speed is not explicitly provided
-  if (safe.distance != null && safe.average_speed == null) {
+  if (safe.distance != null && safe.distance > 0) {
+    // Always recompute average_speed from the new distance + moving_time
     const movingTime = safe.moving_time ?? activity.moving_time
-    if (movingTime > 0 && safe.distance > 0) {
+    if (movingTime > 0) {
       safe.average_speed = safe.distance / movingTime
+    }
+
+    // Preserve the indoor type when distance is first set on a 0-distance activity
+    const INDOOR_PROMOTE: Record<string, string> = {
+      Ride: 'VirtualRide', Run: 'VirtualRun', Rowing: 'VirtualRow',
+    }
+    if (activity.distance < 100 && INDOOR_PROMOTE[activity.sport_type]) {
+      safe.sport_type = safe.sport_type ?? INDOOR_PROMOTE[activity.sport_type]
     }
   }
 
