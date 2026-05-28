@@ -3,6 +3,14 @@ import { getSession } from '@/lib/session'
 import { readActivities, updateActivity } from '@/lib/storage'
 import type { NormalizedActivity } from '@/types'
 
+// Sport types that should be promoted to their indoor variant when a real
+// distance is first set (i.e. the activity was a 0-distance indoor session).
+const INDOOR_PROMOTE: Record<string, string> = {
+  Ride:   'VirtualRide',
+  Run:    'VirtualRun',
+  Rowing: 'VirtualRow',
+}
+
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -16,13 +24,22 @@ export async function PATCH(
   // Never allow overwriting identity or enrichment-pipeline fields via this route
   const { id: _id, streams, laps, best_efforts, splits_metric, ...safe } = updates
 
-  // Derive average_speed when distance is updated but speed is not explicitly provided
-  if (safe.distance != null && safe.average_speed == null) {
+  if (safe.distance != null && safe.distance > 0) {
     const activities = readActivities(session.userId)
     const activity = activities.find((a) => String(a.id) === id)
-    const movingTime = safe.moving_time ?? activity?.moving_time ?? 0
-    if (movingTime > 0 && safe.distance > 0) {
-      safe.average_speed = safe.distance / movingTime
+
+    if (activity) {
+      // Always recompute average_speed from the new distance + moving_time
+      const movingTime = safe.moving_time ?? activity.moving_time
+      if (movingTime > 0) {
+        safe.average_speed = safe.distance / movingTime
+      }
+
+      // Preserve the indoor type: if this was a 0-distance activity inferred
+      // as indoor, promote sport_type so the Indoor badge persists after save
+      if (activity.distance < 100 && INDOOR_PROMOTE[activity.sport_type]) {
+        safe.sport_type = safe.sport_type ?? INDOOR_PROMOTE[activity.sport_type]
+      }
     }
   }
 
