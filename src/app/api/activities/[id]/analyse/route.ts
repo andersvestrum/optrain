@@ -7,7 +7,9 @@ import type { NormalizedActivity } from '@/types'
 
 // ─── Activity-type-specific prompts ──────────────────────────────────────────
 
-const SYSTEM_PROMPT = `You are a fitness data extraction assistant. Extract structured workout data from activity titles, descriptions, and photos of equipment displays. Return ONLY valid JSON matching the schema. If a value cannot be confidently determined, omit it entirely — do not guess.`
+const SYSTEM_PROMPT = `You are a fitness data extraction assistant. Extract structured workout data from activity titles, descriptions, and photos of equipment displays. Return ONLY valid JSON matching the schema.
+
+Make your best effort — if you can make a reasonable estimate from partial information, include it. It is better to suggest a plausible value than to return nothing. For any value you are less than fully certain about, note it in the "notes" field (e.g. "distance estimated from title"). Only omit a field if you have absolutely no basis for any estimate.`
 
 function buildPrompt(activity: NormalizedActivity, hasPhotos: boolean): string {
   const typeInstructions: Record<string, string> = {
@@ -18,9 +20,9 @@ function buildPrompt(activity: NormalizedActivity, hasPhotos: boolean): string {
 - Stroke rate in strokes/min (s/m or spm)
 - Power in watts (W)
 - Calories
-Convert any split pace to seconds per 500m for average_split_500m.`,
+Convert any split pace to seconds per 500m. If the title says something like "5k row" or "5000m", use that as distance. Best-effort estimates from partial data are encouraged.`,
 
-    VirtualRow: `This is an indoor rowing erg session. Same as above.`,
+    VirtualRow: `This is an indoor rowing erg session. Same as above. Extract any numbers visible — partial data is fine.`,
 
     Ride: `This is an indoor cycling session (trainer, spin bike, Zwift, Wahoo, etc.). Displays typically show:
 - Distance in km (sometimes miles — convert to metres)
@@ -28,9 +30,10 @@ Convert any split pace to seconds per 500m for average_split_500m.`,
 - Cadence in rpm
 - Average speed in km/h
 - Heart rate in bpm
-- Calories`,
+- Calories
+If the title mentions distance or duration (e.g. "45 min ride", "20km Zwift"), use that. Estimates from partial info are welcome.`,
 
-    VirtualRide: `This is an indoor cycling session. Same as above.`,
+    VirtualRide: `This is an indoor cycling session. Same as above. Best-effort estimates from any available signal are encouraged.`,
 
     Run: `This is a treadmill run. Displays typically show:
 - Distance in km or miles (convert miles: 1 mile = 1609.34 m)
@@ -38,22 +41,24 @@ Convert any split pace to seconds per 500m for average_split_500m.`,
 - Speed in km/h or mph
 - Incline in %
 - Heart rate in bpm
-- Calories`,
+- Calories
+If the title says "5k treadmill" or similar, extract the distance. Estimates from partial info are welcome.`,
 
-    VirtualRun: `This is a treadmill run. Same as above.`,
+    VirtualRun: `This is a treadmill run. Same as above. Best-effort estimates from any available signal are encouraged.`,
 
     Swim: `This is a pool swim session. Look for:
 - Pool length in metres (25m or 50m)
 - Number of laps (total length = laps × pool length)
 - Total distance in metres or yards (1 yard = 0.9144m)
 - Total time
-- Stroke type`,
+- Stroke type
+If only pool length and lap count are visible, compute total distance. Estimates are welcome.`,
 
     WeightTraining: `This is a gym/weight training session. Look for:
 - Total active/workout time in minutes or seconds
 - Calories burned
 - Any distance equivalent
-Also parse the title and description for sets/reps (e.g. "5x5 squats", "3 rounds")`,
+Parse the title and description for clues (e.g. "5x5 squats 45 min", "3 rounds", "30 min session"). Even rough estimates from the title or description count.`,
   }
 
   const instruction = typeInstructions[activity.sport_type]
@@ -66,9 +71,11 @@ Activity title: "${activity.name}"
 ${activity.description ? `Description: "${activity.description}"` : ''}
 ${hasPhotos ? 'Photos of the session/equipment display are attached.' : 'No photos available.'}
 
-Return a JSON object with only the fields you can confidently extract. All times in seconds, all distances in metres.
+Return a JSON object with all fields you can extract or reasonably estimate. All times in seconds, all distances in metres.
 
-Schema (include only fields you found):
+For each field, give your best estimate even if you are not 100% certain — partial data (e.g. a blurry number, a title like "5k row", a description mentioning "30 min") is enough to include an estimate. Explain your reasoning and any uncertainty in the "notes" field.
+
+Schema (include every field you can estimate, even if approximate):
 {
   "distance_m": number,           // total distance in metres
   "moving_time_s": number,        // active/moving time in seconds
@@ -78,7 +85,7 @@ Schema (include only fields you found):
   "average_cadence": number,      // cadence in rpm or spm
   "average_watts": number,        // average power in watts
   "calories": number,             // calories burned
-  "notes": string                 // brief explanation of what you found and from where
+  "notes": string                 // explain what you found, where you found it, and any uncertainty
 }`
 }
 
