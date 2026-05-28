@@ -85,9 +85,15 @@ function buildPrompt(
     knownLines.push(`Avg power: ${Math.round(activity.average_watts!)} W (already recorded)`)
 
   // ── Schema: only fields that are genuinely missing ────────────────────────
+  const isCycling = ['Ride', 'VirtualRide'].includes(activity.sport_type)
   const schemaFields: string[] = []
-  if (missing.distance)
-    schemaFields.push(`  "distance_m": number,           // total distance in metres`)
+  if (missing.distance) {
+    if (isCycling) {
+      schemaFields.push(`  "distance_km": number,          // distance exactly as shown on display in km (e.g. 58.3 for Keiser TRIP 58.3) — do NOT convert to metres, the server handles that`)
+    } else {
+      schemaFields.push(`  "distance_m": number,           // total distance in metres`)
+    }
+  }
   if (missing.moving_time)
     schemaFields.push(`  "moving_time_s": number,        // active/moving time in seconds`)
   if (missing.elapsed_time)
@@ -122,6 +128,7 @@ ${schemaFields.join('\n')}
 
 interface RawExtraction {
   distance_m?: number
+  distance_km?: number   // cycling only — model outputs TRIP value in km as-is, server converts
   moving_time_s?: number
   elapsed_time_s?: number
   average_heartrate?: number
@@ -332,6 +339,11 @@ export async function POST(
     } catch {
       // Both models failed — return empty suggestions
     }
+  }
+
+  // Normalise distance_km → distance_m for cycling activities
+  if (raw.distance_km && raw.distance_km > 0 && !raw.distance_m) {
+    raw.distance_m = raw.distance_km * 1000
   }
 
   sanitiseExtraction(raw, activity)
