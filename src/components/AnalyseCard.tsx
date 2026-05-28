@@ -9,7 +9,7 @@ interface Props {
   photoUrls: string[]
 }
 
-type Status = 'loading' | 'done' | 'empty' | 'no-token' | 'error' | 'saving' | 'saved'
+type Status = 'loading' | 'done' | 'empty' | 'no-token' | 'error' | 'saving' | 'saved-local' | 'saved-strava'
 
 const LOADING_LABELS: Record<string, string> = {
   Rowing:        'Reading Concept2 display…',
@@ -91,7 +91,7 @@ export default function AnalyseCard({
       setStravaError(data.stravaError)
     }
 
-    setStatus('saved')
+    setStatus(pushToStrava ? 'saved-strava' : 'saved-local')
     router.refresh()
   }
 
@@ -134,13 +134,13 @@ export default function AnalyseCard({
     )
   }
 
-  if (status === 'saved') {
+  if (status === 'saved-strava') {
     return (
       <div className="bg-white rounded-2xl border border-green-200 shadow-sm p-5 text-sm text-green-600 flex items-center gap-2">
         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
         </svg>
-        Activity updated.
+        Activity updated and synced to Strava.
         {stravaError && (
           <span className="ml-2 text-amber-600">Strava sync failed: {stravaError}</span>
         )}
@@ -148,7 +148,34 @@ export default function AnalyseCard({
     )
   }
 
-  if (activeSuggestions.length === 0 && status === 'done') {
+  if (status === 'saved-local') {
+    return (
+      <div className="bg-white rounded-2xl border border-sky-200 shadow-sm overflow-hidden">
+        {/* Saved banner */}
+        <div className="px-6 py-3 bg-green-50 border-b border-green-100 flex items-center gap-2 text-sm text-green-700">
+          <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          </svg>
+          Saved locally.
+        </div>
+        {/* Still offer Strava upload */}
+        <div className="px-6 py-4 flex items-center gap-3 flex-wrap">
+          <button
+            onClick={() => save(true)}
+            disabled={status !== 'saved-local'}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-200 text-gray-600 text-sm font-medium hover:border-orange-300 hover:text-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            Upload to Strava
+          </button>
+          {stravaError && (
+            <span className="text-xs text-amber-600">Strava sync failed: {stravaError}</span>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  if (activeSuggestions.length === 0 && (status === 'done')) {
     return (
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5 text-sm text-gray-400">
         All suggested fields were dismissed.
@@ -236,7 +263,7 @@ export default function AnalyseCard({
           className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-orange-500 text-white text-sm font-medium hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           {status === 'saving' && <Spinner small />}
-          Update activity
+          Save locally
         </button>
         <button
           onClick={() => save(true)}
@@ -244,7 +271,7 @@ export default function AnalyseCard({
           className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-200 text-gray-600 text-sm font-medium hover:border-orange-300 hover:text-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           {status === 'saving' && <Spinner small />}
-          Upload to Strava
+          Save & upload to Strava
         </button>
       </div>
     </div>
