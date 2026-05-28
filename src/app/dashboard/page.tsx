@@ -131,7 +131,10 @@ export default async function DashboardPage({
   ]
 
   const lastSynced = syncState.last_synced_at
-    ? new Date(syncState.last_synced_at * 1000).toLocaleString()
+    ? new Date(syncState.last_synced_at * 1000).toLocaleString('en-GB', {
+        day: 'numeric', month: 'short', year: 'numeric',
+        hour: '2-digit', minute: '2-digit', hour12: false,
+      })
     : 'Never'
 
   const publicProfile: PublicProfile | null = profile
