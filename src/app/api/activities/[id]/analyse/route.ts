@@ -38,8 +38,13 @@ function hasMissingFields(missing: MissingFields): boolean {
 const TYPE_CONTEXT: Record<string, string> = {
   Rowing: `Indoor rowing session (erg/ergometer, e.g. Concept2). Displays show: distance in metres, time as h:mm:ss, split as mm:ss /500m, stroke rate (spm), power (W).`,
   VirtualRow: `Indoor rowing erg session. Same display layout as Concept2 — distance in metres, time, split /500m, stroke rate, power.`,
-  Ride: `Indoor cycling session (trainer, spin bike, Zwift, Wahoo, etc.). Displays show: distance in km (convert to metres), power (W), cadence (rpm), speed (km/h), heart rate (bpm).`,
-  VirtualRide: `Indoor cycling session. Same as above — distance in km, power (W), cadence (rpm), speed (km/h).`,
+  Ride: `Indoor cycling session (trainer, spin bike, Zwift, Wahoo, etc.). Displays show: distance in km (convert to metres), power (W), cadence (rpm), speed (km/h), heart rate (bpm).
+
+Keiser M-series bikes (very common in gyms): the field labelled TRIP is the distance in km — convert to metres. IMPORTANT: the Keiser display timer resets to 0:00 after every 60 minutes. A session that shows 25:00 on the display could be 25, 85, or 145 minutes. Do NOT extract moving_time from a Keiser display — it is unreliable. Use only TRIP (distance) and any power/HR/cadence values shown.`,
+
+  VirtualRide: `Indoor cycling session. Same as above — distance in km (convert to metres), power (W), cadence (rpm), speed (km/h).
+
+Keiser M-series bikes: TRIP = distance in km (convert to metres). The display timer resets every 60 minutes — do not use the displayed time for moving_time.`,
   Run: `Treadmill run. Displays show: distance in km or miles (1 mile = 1609.34 m), pace (min/km or min/mile → convert to sec/km), speed (km/h or mph), incline (%), heart rate (bpm).`,
   VirtualRun: `Treadmill run. Same as above — distance in km or miles, pace, speed, heart rate.`,
   Swim: `Pool swim. Look for: pool length (25 m or 50 m), lap count (distance = laps × pool length), or total distance in metres/yards (1 yd = 0.9144 m).`,
@@ -194,6 +199,19 @@ function buildSuggestions(
   return suggestions
 }
 
+// ─── JSON extraction helpers ──────────────────────────────────────────────────
+
+/**
+ * Qwen3 (and other chain-of-thought models) wrap internal reasoning in
+ * <think>...</think> tags before the final answer. The greedy JSON regex
+ * would otherwise span from the first { inside <think> to the last } in
+ * the final answer, producing broken input for JSON.parse(). Strip the
+ * thinking block first so only the final answer remains.
+ */
+function stripThinkTags(text: string): string {
+  return text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim()
+}
+
 // ─── Route handler ────────────────────────────────────────────────────────────
 
 export async function POST(
@@ -257,7 +275,7 @@ export async function POST(
     })
 
     const text = result.choices[0]?.message?.content ?? ''
-    const jsonMatch = text.match(/\{[\s\S]*\}/)
+    const jsonMatch = stripThinkTags(text).match(/\{[\s\S]*\}/)
     if (jsonMatch) raw = JSON.parse(jsonMatch[0])
   } catch {
     // Fallback to DeepSeek-OCR (text only)
@@ -272,7 +290,7 @@ export async function POST(
         max_tokens: 512,
       })
       const text = fallback.choices[0]?.message?.content ?? ''
-      const jsonMatch = text.match(/\{[\s\S]*\}/)
+      const jsonMatch = stripThinkTags(text).match(/\{[\s\S]*\}/)
       if (jsonMatch) raw = JSON.parse(jsonMatch[0])
     } catch {
       // Both models failed — return empty suggestions
