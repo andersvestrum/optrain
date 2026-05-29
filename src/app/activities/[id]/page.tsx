@@ -111,6 +111,7 @@ export default async function ActivityDetailPage({
                 initialDistance={activity.distance}
                 movingTime={activity.moving_time}
                 isRun={isRun}
+                defaultOpen={isIndoor && activity.distance < 100}
               />
             </div>
             {!activity.enriched && (

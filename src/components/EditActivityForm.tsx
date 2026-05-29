@@ -10,6 +10,7 @@ interface Props {
   initialDistance: number  // metres
   movingTime: number       // seconds
   isRun: boolean
+  defaultOpen?: boolean    // open the form immediately (e.g. for indoor activities with no distance)
 }
 
 function livePace(distanceM: number, movingTime: number): string {
@@ -35,9 +36,10 @@ export default function EditActivityForm({
   initialDistance,
   movingTime,
   isRun,
+  defaultOpen = false,
 }: Props) {
   const router = useRouter()
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(defaultOpen)
 
   const [name, setName]               = useState(initialName)
   const [description, setDescription] = useState(initialDescription)

@@ -1,4 +1,5 @@
 export function formatDistance(meters: number): string {
+  if (!meters || meters < 1) return '—'
   const km = meters / 1000
   if (km >= 100) return `${km.toFixed(0)} km`
   if (km >= 10) return `${km.toFixed(1)} km`
