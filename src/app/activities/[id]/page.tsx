@@ -20,6 +20,7 @@ import {
   formatDate,
   formatSportType,
   effectiveSportType,
+  isIndoorActivity,
 } from '@/lib/format'
 import type { PublicProfile } from '@/types'
 
@@ -58,16 +59,9 @@ export default async function ActivityDetailPage({
       }
     : null
 
-  const sportType = effectiveSportType(activity.sport_type, activity.distance)
+  const sportType = effectiveSportType(activity.sport_type, activity)
   const isRun = ['Run', 'TrailRun', 'VirtualRun'].includes(sportType)
-
-  const INDOOR_SPORT_TYPES = new Set([
-    'VirtualRun', 'VirtualRide', 'VirtualRow',
-    'WeightTraining', 'Crossfit', 'Workout', 'Elliptical', 'StairStepper',
-    'HighIntensityIntervalTraining', 'Yoga', 'Pilates', 'Gymnastics', 'JumpRope',
-    'Boxing', 'MartialArts', 'Wrestling',
-  ])
-  const isIndoor = INDOOR_SPORT_TYPES.has(sportType)
+  const isIndoor = isIndoorActivity(activity)
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -122,8 +116,8 @@ export default async function ActivityDetailPage({
           </div>
         </div>
 
-        {/* AI analysis — show for indoor activities or when distance is still 0 */}
-        {(isIndoor || activity.distance < 100) && (
+        {/* AI analysis — show for indoor activities (GPS-based, not distance-based) */}
+        {isIndoor && (
           <AnalyseCardLoader
             activityId={activity.id}
             sportType={activity.sport_type}

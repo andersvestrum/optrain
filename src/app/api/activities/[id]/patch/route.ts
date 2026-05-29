@@ -3,8 +3,8 @@ import { getSession } from '@/lib/session'
 import { readActivities, updateActivity } from '@/lib/storage'
 import type { NormalizedActivity } from '@/types'
 
-// Sport types that should be promoted to their indoor variant when a real
-// distance is first set (i.e. the activity was a 0-distance indoor session).
+// Sport types that should be stored as their indoor (Virtual*) variant
+// when the activity has no GPS data.
 const INDOOR_PROMOTE: Record<string, string> = {
   Ride:   'VirtualRide',
   Run:    'VirtualRun',
@@ -35,9 +35,12 @@ export async function PATCH(
         safe.average_speed = safe.distance / movingTime
       }
 
-      // Preserve the indoor type: if this was a 0-distance activity inferred
-      // as indoor, promote sport_type so the Indoor badge persists after save
-      if (activity.distance < 100 && INDOOR_PROMOTE[activity.sport_type]) {
+      // If the activity has no GPS data and the sport type has an indoor variant,
+      // promote sport_type (e.g. Ride → VirtualRide) so it is stored correctly.
+      // GPS absence — not distance — is the indoor signal; distance changes after
+      // AI analysis fills it in.
+      const hasGPS = !!(activity.map_polyline || activity.streams?.latlng?.length)
+      if (!hasGPS && INDOOR_PROMOTE[activity.sport_type]) {
         safe.sport_type = safe.sport_type ?? INDOOR_PROMOTE[activity.sport_type]
       }
     }

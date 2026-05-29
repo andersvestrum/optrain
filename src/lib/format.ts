@@ -134,24 +134,65 @@ export function formatSportType(sportType: string): string {
   return SPORT_TYPE_LABELS[sportType] ?? sportType
 }
 
-/**
- * Sports that have both an outdoor and indoor variant.
- * When distance < 100 m we infer the indoor variant.
- */
-const INDOOR_INFER: Record<string, string> = {
-  Ride:   'VirtualRide',
-  Run:    'VirtualRun',
-  Rowing: 'VirtualRow',
+// ─── Indoor detection ─────────────────────────────────────────────────────────
+
+type GPSActivity = { map_polyline?: string; streams?: { latlng?: unknown[] } }
+
+/** True when the activity has recorded GPS track data. */
+function hasGPSData(activity: GPSActivity): boolean {
+  return !!(activity.map_polyline || (activity.streams?.latlng as unknown[])?.length)
 }
 
 /**
- * Returns the effective sport_type for display purposes.
- * Promotes e.g. "Ride" → "VirtualRide" when distance is ~0,
- * so zero-distance activities get the indoor icon and badge automatically.
+ * Sports that are always performed indoors, regardless of GPS data.
+ * Exported so other modules can reference the same source of truth.
  */
-export function effectiveSportType(sportType: string, distance: number): string {
-  if (distance < 100 && INDOOR_INFER[sportType]) {
-    return INDOOR_INFER[sportType]
+export const ALWAYS_INDOOR_SPORT_TYPES = new Set([
+  'WeightTraining', 'Crossfit', 'Workout', 'Elliptical', 'StairStepper',
+  'HighIntensityIntervalTraining', 'Yoga', 'Pilates', 'Gymnastics',
+  'JumpRope', 'Boxing', 'MartialArts', 'Wrestling',
+])
+
+/**
+ * Sports that can be either indoor or outdoor — GPS absence is the tie-breaker.
+ * e.g. Ride → indoor cycling trainer if no GPS; Run → treadmill if no GPS.
+ */
+const GPS_DEPENDENT_INDOOR: Record<string, string> = {
+  Ride:   'VirtualRide',
+  Run:    'VirtualRun',
+  Rowing: 'VirtualRow',
+  Swim:   'Swim',   // pool swim has no GPS; OpenWaterSwim does
+}
+
+/**
+ * Returns true when the activity was performed indoors.
+ * Uses GPS data as the primary signal — NOT distance, which changes
+ * after AI analysis fills in missing values for indoor sessions.
+ */
+export function isIndoorActivity(
+  activity: { sport_type: string } & GPSActivity
+): boolean {
+  const { sport_type } = activity
+  if (ALWAYS_INDOOR_SPORT_TYPES.has(sport_type)) return true
+  if (sport_type.startsWith('Virtual')) return true
+  if (GPS_DEPENDENT_INDOOR[sport_type]) return !hasGPSData(activity)
+  return false
+}
+
+/**
+ * Returns the effective sport_type for display/icon purposes.
+ * Promotes e.g. "Ride" → "VirtualRide" when no GPS is present,
+ * so indoor sessions get the correct icon and badge automatically.
+ * This is GPS-based — not distance-based — so it stays correct after
+ * AI analysis fills in a missing distance value.
+ */
+export function effectiveSportType(
+  sportType: string,
+  activity: GPSActivity
+): string {
+  const promoted = GPS_DEPENDENT_INDOOR[sportType]
+  if (promoted && promoted !== 'Swim' && !hasGPSData(activity)) {
+    return promoted
   }
   return sportType
 }

@@ -1,32 +1,12 @@
 import Link from 'next/link'
 import type { NormalizedActivity } from '@/types'
-import { formatDistance, formatTime, formatPace, formatShortDate, formatSportType, effectiveSportType } from '@/lib/format'
+import { formatDistance, formatTime, formatPace, formatShortDate, formatSportType, effectiveSportType, isIndoorActivity } from '@/lib/format'
 import SportIcon from './ActivityIcon'
 
-// Sport types that are definitively indoors — shown with an "Indoor" badge
-const INDOOR_SPORT_TYPES = new Set([
-  'VirtualRun',
-  'VirtualRide',
-  'VirtualRow',
-  'WeightTraining',
-  'Crossfit',
-  'Workout',
-  'Elliptical',
-  'StairStepper',
-  'HighIntensityIntervalTraining',
-  'Yoga',
-  'Pilates',
-  'Gymnastics',
-  'JumpRope',
-  'Boxing',
-  'MartialArts',
-  'Wrestling',
-])
-
 export default function ActivityCard({ activity }: { activity: NormalizedActivity }) {
-  const sportType = effectiveSportType(activity.sport_type, activity.distance)
+  const sportType = effectiveSportType(activity.sport_type, activity)
   const isRun = ['Run', 'TrailRun', 'VirtualRun'].includes(sportType)
-  const isIndoor = INDOOR_SPORT_TYPES.has(sportType)
+  const isIndoor = isIndoorActivity(activity)
 
   return (
     <Link

@@ -30,11 +30,13 @@ export async function PUT(
       safe.average_speed = safe.distance / movingTime
     }
 
-    // Preserve the indoor type when distance is first set on a 0-distance activity
+    // If the activity has no GPS data, promote sport_type to its indoor variant.
+    // GPS absence — not distance — is the indoor signal.
     const INDOOR_PROMOTE: Record<string, string> = {
       Ride: 'VirtualRide', Run: 'VirtualRun', Rowing: 'VirtualRow',
     }
-    if (activity.distance < 100 && INDOOR_PROMOTE[activity.sport_type]) {
+    const hasGPS = !!(activity.map_polyline || activity.streams?.latlng?.length)
+    if (!hasGPS && INDOOR_PROMOTE[activity.sport_type]) {
       safe.sport_type = safe.sport_type ?? INDOOR_PROMOTE[activity.sport_type]
     }
   }
