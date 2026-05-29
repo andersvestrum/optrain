@@ -26,6 +26,15 @@ function loadingLabel(sportType: string) {
   return LOADING_LABELS[sportType] ?? LOADING_LABELS.default
 }
 
+const CACHE_KEY = (id: number) => `analyse-${id}`
+
+interface CachedResult {
+  suggestions: Suggestion[]
+  notes: string
+  model: string
+  status: 'saved-local' | 'saved-strava'
+}
+
 export default function AnalyseCard({
   activityId,
   photoUrls,
@@ -39,6 +48,21 @@ export default function AnalyseCard({
   const sportType = (arguments[0] as Props & { sportType: string }).sportType
 
   useEffect(() => {
+    // Restore from localStorage if a previous save exists for this activity
+    try {
+      const raw = localStorage.getItem(CACHE_KEY(activityId))
+      if (raw) {
+        const cached: CachedResult = JSON.parse(raw)
+        setSuggestions(cached.suggestions)
+        setNotes(cached.notes)
+        setModel(cached.model)
+        setStatus(cached.status)
+        return
+      }
+    } catch {
+      // Corrupt cache — ignore and re-run analysis
+    }
+
     fetch(`/api/activities/${activityId}/analyse`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -90,7 +114,16 @@ export default function AnalyseCard({
       setStravaError(data.stravaError)
     }
 
-    setStatus(pushToStrava ? 'saved-strava' : 'saved-local')
+    const nextStatus = pushToStrava ? 'saved-strava' : 'saved-local'
+    setStatus(nextStatus)
+
+    // Persist result so the card survives a page reload
+    try {
+      const cached: CachedResult = { suggestions, notes, model, status: nextStatus }
+      localStorage.setItem(CACHE_KEY(activityId), JSON.stringify(cached))
+    } catch {
+      // localStorage unavailable — non-fatal
+    }
   }
 
   // ── Simple render states (no diff table) ──────────────────────────────────
