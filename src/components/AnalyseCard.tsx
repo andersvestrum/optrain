@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import type { Suggestion } from '@/app/api/activities/[id]/analyse/route'
 
 interface Props {
@@ -31,7 +30,6 @@ export default function AnalyseCard({
   activityId,
   photoUrls,
 }: Props & { sportType: string }) {
-  const router = useRouter()
   const [status, setStatus]           = useState<Status>('loading')
   const [suggestions, setSuggestions] = useState<Suggestion[]>([])
   const [dismissed, setDismissed]     = useState<Set<string>>(new Set())
@@ -93,7 +91,6 @@ export default function AnalyseCard({
     }
 
     setStatus(pushToStrava ? 'saved-strava' : 'saved-local')
-    router.refresh()
   }
 
   // ── Simple render states (no diff table) ──────────────────────────────────
@@ -227,6 +224,12 @@ export default function AnalyseCard({
             >
               Upload to Strava
             </button>
+            <button
+              onClick={() => window.location.reload()}
+              className="text-xs text-gray-400 hover:text-gray-600 transition-colors ml-auto"
+            >
+              Reload to see updated stats ↻
+            </button>
             {stravaError && <span className="text-xs text-amber-600">Strava sync failed: {stravaError}</span>}
           </>
         )}
@@ -240,6 +243,12 @@ export default function AnalyseCard({
               </svg>
               Saved & synced to Strava
             </span>
+            <button
+              onClick={() => window.location.reload()}
+              className="text-xs text-gray-400 hover:text-gray-600 transition-colors ml-auto"
+            >
+              Reload to see updated stats ↻
+            </button>
             {stravaError && <span className="text-xs text-amber-600">Strava sync failed: {stravaError}</span>}
           </>
         )}
