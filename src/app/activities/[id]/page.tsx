@@ -121,8 +121,8 @@ export default async function ActivityDetailPage({
           </div>
         </div>
 
-        {/* AI analysis — auto-loads for zero-distance activities */}
-        {activity.distance < 100 && (
+        {/* AI analysis — show for indoor activities or when distance is still 0 */}
+        {(isIndoor || activity.distance < 100) && (
           <AnalyseCardLoader
             activityId={activity.id}
             sportType={activity.sport_type}
