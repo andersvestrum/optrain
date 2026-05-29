@@ -10,7 +10,7 @@ export async function GET() {
     redirect_uri: redirectUri,
     response_type: 'code',
     approval_prompt: 'auto',
-    scope: 'activity:read_all,read',
+    scope: 'activity:read_all,activity:write,read',
   })
 
   return NextResponse.redirect(`https://www.strava.com/oauth/authorize?${params}`)
