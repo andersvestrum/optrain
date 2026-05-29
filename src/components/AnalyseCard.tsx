@@ -263,7 +263,7 @@ export default function AnalyseCard({
             >
               Reload to see updated stats ↻
             </button>
-            {stravaError && <span className="text-xs text-amber-600">Strava sync failed: {stravaError}</span>}
+            {stravaError && <StravaErrorNote message={stravaError} />}
           </>
         )}
 
@@ -274,7 +274,7 @@ export default function AnalyseCard({
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
-              Saved & synced to Strava
+              {stravaError ? 'Saved locally — see note below' : 'Saved & synced to Strava'}
             </span>
             <button
               onClick={() => window.location.reload()}
@@ -282,7 +282,7 @@ export default function AnalyseCard({
             >
               Reload to see updated stats ↻
             </button>
-            {stravaError && <span className="text-xs text-amber-600">Strava sync failed: {stravaError}</span>}
+            {stravaError && <StravaErrorNote message={stravaError} />}
           </>
         )}
 
@@ -309,6 +309,15 @@ export default function AnalyseCard({
         )}
       </div>
     </div>
+  )
+}
+
+function StravaErrorNote({ message }: { message: string }) {
+  const isDeviceLock = message.includes('restricts distance')
+  return (
+    <p className={`w-full text-xs mt-1 leading-relaxed ${isDeviceLock ? 'text-amber-600' : 'text-red-500'}`}>
+      {isDeviceLock ? '⚠️' : '✗'} {message}
+    </p>
   )
 }
 

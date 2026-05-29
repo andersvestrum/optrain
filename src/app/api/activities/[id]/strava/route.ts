@@ -48,12 +48,16 @@ export async function PUT(
 
   const stravaBody: Record<string, unknown> = {}
   if (updates.name != null)          stravaBody.name         = updates.name
-  if (updates.distance != null)      stravaBody.distance     = updates.distance
+  if (updates.description != null)   stravaBody.description  = updates.description
   if (updates.moving_time != null)   stravaBody.moving_time  = updates.moving_time
   if (updates.elapsed_time != null)  stravaBody.elapsed_time = updates.elapsed_time
-  if (updates.description != null)   stravaBody.description  = updates.description
+  // Always push sport_type when we have it — updating to VirtualRide/VirtualRow
+  // unlocks the distance field on Strava for device-synced indoor activities.
+  if (safe.sport_type != null)       stravaBody.sport_type   = safe.sport_type
+  if (updates.distance != null)      stravaBody.distance     = updates.distance
 
   let stravaError: string | null = null
+  let distanceIgnored = false
 
   if (Object.keys(stravaBody).length > 0) {
     const res = await fetch(`${STRAVA_API}/activities/${id}`, {
@@ -68,12 +72,25 @@ export async function PUT(
     if (!res.ok) {
       const text = await res.text().catch(() => '')
       stravaError = `Strava returned ${res.status}${text ? ': ' + text.slice(0, 120) : ''}`
+    } else {
+      // Strava may silently ignore the distance field for device-synced activities.
+      // Detect this by comparing the returned distance with what we sent.
+      const returned = await res.json().catch(() => ({}))
+      if (
+        stravaBody.distance != null &&
+        returned.distance != null &&
+        Math.abs(returned.distance - (stravaBody.distance as number)) > 1
+      ) {
+        distanceIgnored = true
+        stravaError = `Distance not saved on Strava (it returned ${(returned.distance / 1000).toFixed(2)} km). Strava restricts distance edits for activities synced from devices like Garmin. Your local data is correct — edit the distance directly on strava.com if needed.`
+      }
     }
   }
 
   return NextResponse.json({
     ok: true,
     stravaUpdated: stravaError === null,
+    distanceIgnored,
     stravaError,
   })
 }
