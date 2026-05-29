@@ -12,15 +12,15 @@ interface Props {
 type Status = 'loading' | 'done' | 'empty' | 'no-token' | 'error' | 'saving' | 'saved-local' | 'saved-strava'
 
 const LOADING_LABELS: Record<string, string> = {
-  Rowing:        'Reading Concept2 display…',
-  VirtualRow:    'Reading Concept2 display…',
-  Ride:          'Reading indoor cycling display…',
-  VirtualRide:   'Reading indoor cycling display…',
-  Run:           'Reading treadmill display…',
-  VirtualRun:    'Reading treadmill display…',
-  Swim:          'Analysing swim session…',
-  WeightTraining:'Analysing workout…',
-  default:       'Analysing activity…',
+  Rowing:         'Reading Concept2 display…',
+  VirtualRow:     'Reading Concept2 display…',
+  Ride:           'Reading indoor cycling display…',
+  VirtualRide:    'Reading indoor cycling display…',
+  Run:            'Reading treadmill display…',
+  VirtualRun:     'Reading treadmill display…',
+  Swim:           'Analysing swim session…',
+  WeightTraining: 'Analysing workout…',
+  default:        'Analysing activity…',
 }
 
 function loadingLabel(sportType: string) {
@@ -66,6 +66,7 @@ export default function AnalyseCard({
   }, [activityId, photoUrls])
 
   const activeSuggestions = suggestions.filter((s) => !dismissed.has(s.field))
+  const isSaved = status === 'saved-local' || status === 'saved-strava'
 
   async function save(pushToStrava: boolean) {
     setStatus('saving')
@@ -95,7 +96,7 @@ export default function AnalyseCard({
     router.refresh()
   }
 
-  // ── Render states ──────────────────────────────────────────────────────────
+  // ── Simple render states (no diff table) ──────────────────────────────────
 
   if (status === 'loading') {
     return (
@@ -111,8 +112,12 @@ export default function AnalyseCard({
   if (status === 'no-token') {
     return (
       <div className="bg-white rounded-2xl border border-amber-200 shadow-sm p-5 text-sm text-amber-700">
-        AI analysis unavailable — add <code className="font-mono bg-amber-50 px-1 rounded">HF_TOKEN</code> to <code className="font-mono bg-amber-50 px-1 rounded">.env.local</code> to enable it.
-        Get a free token at <a href="https://huggingface.co/settings/tokens" target="_blank" rel="noreferrer" className="underline">huggingface.co/settings/tokens</a>.
+        AI analysis unavailable — add <code className="font-mono bg-amber-50 px-1 rounded">HF_TOKEN</code> to{' '}
+        <code className="font-mono bg-amber-50 px-1 rounded">.env.local</code> to enable it.
+        Get a free token at{' '}
+        <a href="https://huggingface.co/settings/tokens" target="_blank" rel="noreferrer" className="underline">
+          huggingface.co/settings/tokens
+        </a>.
       </div>
     )
   }
@@ -134,64 +139,18 @@ export default function AnalyseCard({
     )
   }
 
-  if (status === 'saved-strava') {
-    return (
-      <div className="bg-white rounded-2xl border border-green-200 shadow-sm p-5 text-sm text-green-600 flex items-center gap-2">
-        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-        </svg>
-        Activity updated and synced to Strava.
-        {stravaError && (
-          <span className="ml-2 text-amber-600">Strava sync failed: {stravaError}</span>
-        )}
-      </div>
-    )
-  }
+  // ── Main diff card — persists through saving and saved states ──────────────
 
-  if (status === 'saved-local') {
-    return (
-      <div className="bg-white rounded-2xl border border-sky-200 shadow-sm overflow-hidden">
-        {/* Saved banner */}
-        <div className="px-6 py-3 bg-green-50 border-b border-green-100 flex items-center gap-2 text-sm text-green-700">
-          <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-          </svg>
-          Saved locally.
-        </div>
-        {/* Still offer Strava upload */}
-        <div className="px-6 py-4 flex items-center gap-3 flex-wrap">
-          <button
-            onClick={() => save(true)}
-            disabled={status !== 'saved-local'}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-200 text-gray-600 text-sm font-medium hover:border-orange-300 hover:text-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            Upload to Strava
-          </button>
-          {stravaError && (
-            <span className="text-xs text-amber-600">Strava sync failed: {stravaError}</span>
-          )}
-        </div>
-      </div>
-    )
-  }
-
-  if (activeSuggestions.length === 0 && (status === 'done')) {
-    return (
-      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5 text-sm text-gray-400">
-        All suggested fields were dismissed.
-      </div>
-    )
-  }
-
-  // ── Main diff card ─────────────────────────────────────────────────────────
+  const borderColor = isSaved ? 'border-green-200' : 'border-sky-200'
 
   return (
-    <div className="bg-white rounded-2xl border border-sky-200 shadow-sm overflow-hidden">
+    <div className={`bg-white rounded-2xl border ${borderColor} shadow-sm overflow-hidden`}>
+
       {/* Header */}
       <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between gap-4">
         <div>
           <p className="text-sm font-semibold text-gray-900">
-            AI found {activeSuggestions.length} field{activeSuggestions.length !== 1 ? 's' : ''} to add
+            AI found {suggestions.length} field{suggestions.length !== 1 ? 's' : ''} to add
           </p>
           {model && (
             <p className="text-xs text-gray-400 mt-0.5">
@@ -213,66 +172,99 @@ export default function AnalyseCard({
           return (
             <div
               key={s.field}
-              className={`flex items-center gap-4 px-6 py-3.5 transition-colors ${
-                isDismissed ? 'opacity-40' : ''
-              }`}
+              className={`flex items-center gap-4 px-6 py-3.5 transition-colors ${isDismissed ? 'opacity-40' : ''}`}
             >
-              {/* Field label */}
               <span className="w-32 flex-shrink-0 text-sm text-gray-500">{s.label}</span>
-
-              {/* Current value — muted, struck through */}
               <span className="w-28 flex-shrink-0 text-sm text-gray-400 line-through tabular-nums">
                 {s.currentValue}
               </span>
-
-              {/* Arrow */}
               <span className="text-gray-300 flex-shrink-0">→</span>
-
-              {/* Suggested value — bold orange */}
               <span className="flex-1 text-sm font-semibold text-orange-500 tabular-nums">
                 {isDismissed ? <span className="line-through">{s.suggestedValue}</span> : s.suggestedValue}
               </span>
-
-              {/* Source badge */}
               <span className="hidden sm:inline text-xs text-gray-300 flex-shrink-0">{s.source}</span>
-
-              {/* Dismiss / restore button */}
-              <button
-                onClick={() =>
-                  setDismissed((prev) => {
-                    const next = new Set(prev)
-                    isDismissed ? next.delete(s.field) : next.add(s.field)
-                    return next
-                  })
-                }
-                className="flex-shrink-0 w-5 h-5 flex items-center justify-center rounded-full text-gray-300 hover:text-red-400 hover:bg-red-50 transition-colors text-xs leading-none"
-                title={isDismissed ? 'Restore' : 'Dismiss'}
-              >
-                {isDismissed ? '+' : '×'}
-              </button>
+              {/* Only show dismiss/restore while not yet saved */}
+              {!isSaved && (
+                <button
+                  onClick={() =>
+                    setDismissed((prev) => {
+                      const next = new Set(prev)
+                      isDismissed ? next.delete(s.field) : next.add(s.field)
+                      return next
+                    })
+                  }
+                  className="flex-shrink-0 w-5 h-5 flex items-center justify-center rounded-full text-gray-300 hover:text-red-400 hover:bg-red-50 transition-colors text-xs leading-none"
+                  title={isDismissed ? 'Restore' : 'Dismiss'}
+                >
+                  {isDismissed ? '+' : '×'}
+                </button>
+              )}
+              {/* After saving, show a saved checkmark per row */}
+              {isSaved && !isDismissed && (
+                <svg className="flex-shrink-0 w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              )}
             </div>
           )
         })}
       </div>
 
-      {/* Actions */}
+      {/* Actions footer */}
       <div className="px-6 py-4 border-t border-gray-100 flex items-center gap-3 flex-wrap">
-        <button
-          onClick={() => save(false)}
-          disabled={status === 'saving' || activeSuggestions.length === 0}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-orange-500 text-white text-sm font-medium hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-        >
-          {status === 'saving' && <Spinner small />}
-          Save locally
-        </button>
-        <button
-          onClick={() => save(true)}
-          disabled={status === 'saving' || activeSuggestions.length === 0}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-200 text-gray-600 text-sm font-medium hover:border-orange-300 hover:text-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-        >
-          {status === 'saving' && <Spinner small />}
-          Save & upload to Strava
-        </button>
+        {/* Saved-local state: show confirmation + offer Strava upload */}
+        {status === 'saved-local' && (
+          <>
+            <span className="flex items-center gap-1.5 text-sm text-green-600 font-medium">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+              Saved locally
+            </span>
+            <button
+              onClick={() => save(true)}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-200 text-gray-600 text-sm font-medium hover:border-orange-300 hover:text-orange-600 transition-colors"
+            >
+              Upload to Strava
+            </button>
+            {stravaError && <span className="text-xs text-amber-600">Strava sync failed: {stravaError}</span>}
+          </>
+        )}
+
+        {/* Saved-strava state: show full confirmation */}
+        {status === 'saved-strava' && (
+          <>
+            <span className="flex items-center gap-1.5 text-sm text-green-600 font-medium">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+              Saved & synced to Strava
+            </span>
+            {stravaError && <span className="text-xs text-amber-600">Strava sync failed: {stravaError}</span>}
+          </>
+        )}
+
+        {/* Default / saving state: show action buttons */}
+        {(status === 'done' || status === 'saving') && (
+          <>
+            <button
+              onClick={() => save(false)}
+              disabled={status === 'saving' || activeSuggestions.length === 0}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-orange-500 text-white text-sm font-medium hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {status === 'saving' && <Spinner small />}
+              Save locally
+            </button>
+            <button
+              onClick={() => save(true)}
+              disabled={status === 'saving' || activeSuggestions.length === 0}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-200 text-gray-600 text-sm font-medium hover:border-orange-300 hover:text-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {status === 'saving' && <Spinner small />}
+              Save & upload to Strava
+            </button>
+          </>
+        )}
       </div>
     </div>
   )
